@@ -84,6 +84,26 @@ parse() {
     refute is_empty_value '=value'
 }
 
+@test "is_empty_value: '#' without leading whitespace is a value, not a comment" {
+    source "$SCRIPT"
+    refute is_empty_value '#s3cr3t'
+    refute is_empty_value '#'
+    refute is_empty_value '""#x'
+    refute is_empty_value '"" x'
+    assert is_empty_value '  #'
+    assert is_empty_value " ''  # comment"
+}
+
+@test "is_empty_value: inline comment is captured with its whitespace" {
+    source "$SCRIPT"
+    is_empty_value ' # get from vault'
+    assert_equal "$EMPTY_COMMENT" ' # get from vault'
+    is_empty_value '""   # quoted'
+    assert_equal "$EMPTY_COMMENT" '   # quoted'
+    is_empty_value ''
+    assert_equal "$EMPTY_COMMENT" ''
+}
+
 # --- creating .env ------------------------------------------------------------
 
 @test "fails when .env.dist is missing" {
@@ -183,6 +203,36 @@ B=""'
     printf 'export A=\n' >.env
     configure 'v'
     assert_file .env 'export A=v'
+}
+
+@test "values starting with '#' are kept and not prompted for" {
+    printf 'PASSWORD=\nCOLOR=#fff\n' >.env.dist
+    printf 'PASSWORD=#s3cr3t\n' >.env
+    configure 'must-not-be-used'
+    assert_success
+    refute_output --partial "PASSWORD: "
+    refute_output --partial "COLOR: "
+    assert_file .env 'PASSWORD=#s3cr3t
+COLOR=#fff'
+}
+
+@test "filling an empty value keeps the inline comment" {
+    printf 'API_KEY= # get from vault\nTOKEN=\n' >.env.dist
+    printf 'TOKEN=""  # ask the team\n' >.env
+    configure $'abc\nt=1'
+    assert_success
+    assert_file .env 'API_KEY=abc # get from vault
+TOKEN=t=1  # ask the team'
+}
+
+@test "an empty value with an inline comment stays as is when the answer is empty" {
+    printf 'API_KEY= # get from vault\n' >.env.dist
+    printf 'API_KEY= # get from vault\n' >.env
+    run "$SCRIPT" </dev/null
+    assert_success
+    assert_output --partial "API_KEY: "
+    assert_file .env 'API_KEY= # get from vault'
+    assert [ ! -e .env.old ]
 }
 
 @test "empty answers leave values empty and do not change .env" {

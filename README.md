@@ -12,7 +12,10 @@ Syncs `.env` with the `.env.dist` template:
 
 Key order, comments and blank lines are taken from `.env.dist`.
 The value is everything after the first `=`, so `URL=postgres://h/db?a=b` and `TOKEN==abc==` are parsed correctly.
-`KEY=`, `KEY=""` and `KEY=''` are treated as empty.
+`KEY=`, `KEY=""` and `KEY=''` are treated as empty, optionally followed by an inline comment.
+As in common dotenv parsers, `#` starts a comment only after whitespace: `KEY= # comment` is empty,
+while `KEY=#abc` has the value `#abc`. When an empty value is filled in, its inline comment is kept
+(`API_KEY= # from vault` becomes `API_KEY=abc # from vault`).
 
 Works on Linux and macOS with bash 3.2+ and both GNU and BusyBox coreutils
 (on Alpine install bash first: `apk add bash`).

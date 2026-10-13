@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 #
-# dotenv-configure — syncs .env with the .env.dist template.
+# dotenv-configure — syncs ENV_FILE (default: .env) with the DIST_FILE template
+# (default: .env.dist); both can be set with -e/--env and -d/--dist.
+# https://github.com/slavumni/dotenv-configure
 #
-#   * existing values in .env are kept unchanged (the line is copied verbatim);
-#   * new keys from .env.dist are added to .env;
+#   * existing values in ENV_FILE are kept unchanged (the line is copied verbatim);
+#   * new keys from DIST_FILE are added to ENV_FILE;
 #   * the user is prompted for empty values (both new and existing ones);
-#   * keys that are no longer in .env.dist are removed from .env;
-#   * an existing .env is backed up to .env.old before it is changed.
+#   * keys that are no longer in DIST_FILE are removed from ENV_FILE;
+#   * an existing ENV_FILE is backed up to ENV_FILE.old (e.g. .env.old) before
+#     it is changed.
 #
-# The layout (key order, comments, blank lines) is taken from .env.dist.
+# The layout (key order, comments, blank lines) is taken from DIST_FILE.
 # Compatible with bash 3.2 (macOS), so associative arrays are not used.
 
 DIST_FILE=".env.dist"
@@ -54,14 +57,27 @@ parse_line() {
 }
 
 # is_empty_value VALUE
-# Treated as empty: "", whitespace only, "" or '' (optionally followed by a comment),
-# or a comment right away ("KEY= # comment").
+# Returns 0 if VALUE is empty: nothing, whitespace only, "" or '', optionally followed
+# by an inline comment. As in common dotenv parsers, "#" starts a comment only after
+# whitespace: "KEY= # comment" is empty, "KEY=#abc" is the value "#abc".
+# Sets EMPTY_COMMENT to the inline comment with its leading whitespace (" # comment"),
+# or to "" if there is none.
 is_empty_value() {
-    local v=$1
-    v=${v#"${v%%[![:space:]]*}"}
-    case $v in
-        '' | '#'* | '""' | "''" | '""'[[:space:]]* | "''"[[:space:]]*) return 0 ;;
+    local v=$1 rest
+    EMPTY_COMMENT=""
+    rest=${v#"${v%%[![:space:]]*}"}
+    case $rest in
+        '""'* | "''"*) v=${rest:2} ;;
     esac
+    # What is left must be nothing, whitespace only, or whitespace and a comment.
+    rest=${v#"${v%%[![:space:]]*}"}
+    if [[ -z $rest ]]; then
+        return 0
+    fi
+    if [[ $rest == '#'* && $rest != "$v" ]]; then
+        EMPTY_COMMENT=$v
+        return 0
+    fi
     return 1
 }
 
@@ -202,8 +218,9 @@ main() {
         if is_empty_value "$value"; then
             ask "$key"
             if [[ -n $ANSWER ]]; then
-                # Everything before the first "=" (key, "export", spaces) is kept as is.
-                line="${line%%=*}=$ANSWER"
+                # Everything before the first "=" (key, "export", spaces) and the
+                # inline comment are kept as is.
+                line="${line%%=*}=$ANSWER$EMPTY_COMMENT"
                 filled=$((filled + 1))
             fi
         fi
